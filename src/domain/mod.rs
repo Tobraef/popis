@@ -66,8 +66,37 @@ impl Party {
     pub fn new(name: String) -> Self { Self { name } }
 }
 
+#[derive(Debug)]
 pub enum Vote {
     For,
     Against,
     Hold,
+}
+
+impl Vote {
+    pub fn from_votes(votes_for: u32, votes_against: u32, votes_held: u32) -> Vote {
+        let max = votes_for.max(votes_against).max(votes_held);
+        match max {
+            x if x == votes_for => Vote::For,
+            x if x == votes_against => Vote::Against,
+            x if x == votes_held => Vote::Hold,
+            _ => panic!(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_votes_tests() {
+        assert!(matches!(Vote::from_votes(1, 0, 2), Vote::Hold));
+        assert!(matches!(Vote::from_votes(2, 4, 2), Vote::Against));
+        assert!(matches!(Vote::from_votes(5, 4, 3), Vote::For));
+
+        assert!(matches!(Vote::from_votes(1, 1, 2), Vote::Hold));
+        assert!(matches!(Vote::from_votes(3, 4, 2), Vote::Against));
+        assert!(matches!(Vote::from_votes(2, 2, 2), Vote::For));
+    }
 }

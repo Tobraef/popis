@@ -1,4 +1,7 @@
+use std::fmt::Display;
+
 use chrono::{Date, Utc, Month, TimeZone};
+use log::error;
 use reqwest::IntoUrl;
 use scraper::{Selector, Html};
 
@@ -13,25 +16,27 @@ pub fn seatings_url(cadence: u32) -> String {
 }
 
 pub fn verify_document(doc: &Html) -> Result<()> {
-    if let Some(e) = doc.errors.first() {
-        Err(PopisError::HtmlParsing(e.to_string()))
-    } else {
-        Ok(())
+    if !doc.errors.is_empty() {
+        error!("Error parsing doc: {}", doc.errors.iter().fold(String::default(), |mut a,b| { a.push_str(b); a }));
     }
+    Ok(())
 }
 
 pub fn parse_err(s: &str) -> PopisError {
     PopisError::HtmlParsing(s.to_owned())
 }
 
-pub async fn fetch_document<U: IntoUrl>(url: U) -> Result<Html> {
-    let html = reqwest::get(url)
+pub async fn fetch_document<U: IntoUrl + Display + Clone>(url: U) -> Result<Html> {
+    let html = reqwest::get(url.clone())
         .await?
         .text()
         .await?;
+    let html = html.replace('_', "x");
     let document = Html::parse_document(&html);
-    verify_document(&document)?;
-    Ok(document)
+    match verify_document(&document) {
+        Err(PopisError::HtmlParsing(str)) => Err(PopisError::HtmlParsing(format!("Error parsing {url}: {str}"))),
+        _ => Ok(document),
+    }
 }
 
 pub fn map_date(polish_date: &str) -> Option<Date<Utc>> {
