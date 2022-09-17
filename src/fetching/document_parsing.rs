@@ -1,4 +1,3 @@
-use log::{info, warn};
 use scraper::{ElementRef, Html};
 
 use super::tools::*;
@@ -22,10 +21,8 @@ fn parse_voting_row(row: ElementRef) -> Option<Voting> {
     let mut cells = row.select(&td_selector);
     let number_with_link = cells.next()?.select(&selector("a")).next()?;
     let link = url_from_link(number_with_link.value().attr("href")?)?;
-    info!("Got link {}", link.0);
     let number = number_with_link.inner_html().parse().ok()?;
     let _hour = cells.next();
-    info!("trying description");
     let description_node = cells.next()?;
     let mut description = description_node.text().next()?.to_owned();
     let second_part = description_node.select(&selector("a"))
@@ -73,14 +70,19 @@ pub fn parse_votings(document: Html) -> Result<Vec<Voting>> {
 fn parse_voting_result_row(row: ElementRef) -> Option<PartyVote> {
     let td_selector = selector("td");
     let mut cells = row.select(&td_selector);
-    let party = cells.next()?.select(&selector("a")).next()?.select(&selector("strong")).next()?.inner_html();
+    let party = cells.next()?.child("a")?.child("strong")?.inner_html();
     let _total_party_members = cells.next();
     let _total_party_votes = cells.next();
     // those are in <strong></strong>
-    let votes_for = cells.next()?.select(&selector("a")).next().map(|e| e.inner_html().parse().unwrap_or(0)).unwrap_or(0);
-    let votes_against = cells.next()?.select(&selector("a")).next().map(|e| e.inner_html().parse().unwrap_or(0)).unwrap_or(0);
-    let votes_held = cells.next()?.select(&selector("a")).next().map(|e| e.inner_html().parse().unwrap_or(0)).unwrap_or(0);
-    warn!("{} {} {}", votes_for, votes_against, votes_held);
+    let get_votes = |e: ElementRef| e
+        .child("a")
+        .map(|e| e.child("strong")
+            .map(|e| e.inner_html().parse().unwrap_or(0)))
+        .flatten()
+        .unwrap_or(0);
+    let votes_for = get_votes(cells.next()?);
+    let votes_against = get_votes(cells.next()?);
+    let votes_held = get_votes(cells.next()?);
     Some(PartyVote::new(Party::new(party), Vote::from_votes(votes_for, votes_against, votes_held)))
 }
 

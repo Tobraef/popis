@@ -1,11 +1,21 @@
 use std::fmt::Display;
 
 use chrono::{Date, Utc, Month, TimeZone};
-use log::error;
+use log::debug;
 use reqwest::IntoUrl;
-use scraper::{Selector, Html};
+use scraper::{Selector, Html, ElementRef};
 
 use crate::{popis_error::{PopisError, Result}, domain::Url};
+
+pub trait Selectible {
+    fn child(&self, selector: &str) -> Option<ElementRef>;
+}
+
+impl Selectible for ElementRef<'_> {
+    fn child(&self, s: &str) -> Option<ElementRef> {
+        self.select(&selector(s)).next()
+    }
+}
 
 pub fn selector(s: &str) -> Selector {
     Selector::parse(s).unwrap()
@@ -17,7 +27,7 @@ pub fn seatings_url(cadence: u32) -> String {
 
 pub fn verify_document(doc: &Html) -> Result<()> {
     if !doc.errors.is_empty() {
-        error!("Error parsing doc: {}", doc.errors.iter().fold(String::default(), |mut a,b| { a.push_str(b); a }));
+        debug!("Error parsing doc: {}", doc.errors.iter().fold(String::default(), |mut a,b| { a.push_str(b); a }));
     }
     Ok(())
 }
@@ -26,8 +36,13 @@ pub fn parse_err(s: &str) -> PopisError {
     PopisError::HtmlParsing(s.to_owned())
 }
 
+lazy_static::lazy_static! {
+    static ref CLIENT: reqwest::Client = reqwest::Client::new();
+}
+
 pub async fn fetch_document<U: IntoUrl + Display + Clone>(url: U) -> Result<Html> {
-    let html = reqwest::get(url.clone())
+    let html = CLIENT.get(url.clone())
+        .send()
         .await?
         .text()
         .await?;
