@@ -1,7 +1,10 @@
 use scraper::{ElementRef, Html};
 
 use super::tools::*;
-use crate::{domain::{Seating, SeatingList, Voting, VotingResult, PartyVote, Party, Vote}, popis_error::{Result}};
+use crate::{
+    domain::{Party, PartyVote, Seating, SeatingList, Vote, Voting, VotingResult},
+    popis_error::Result,
+};
 
 const MAIN_PAGE_DIV_WITH_TABLE: &str = "div#contentBody";
 const MAIN_PAGE_TABLE_CONTENT: &str = "tbody";
@@ -25,23 +28,23 @@ fn parse_voting_row(row: ElementRef) -> Option<Voting> {
     let _hour = cells.next();
     let description_node = cells.next()?;
     let mut description = description_node.text().next()?.to_owned();
-    let second_part = description_node.select(&selector("a"))
-        .next()?
-        .inner_html();
+    let second_part = description_node.select(&selector("a")).next()?.inner_html();
     description.push_str(&second_part);
     Some(Voting::new(link, number, description))
 }
 
 pub fn parse_seatings(document: Html) -> Result<SeatingList> {
-    let table = document.select(&selector(MAIN_PAGE_DIV_WITH_TABLE))
+    let table = document
+        .select(&selector(MAIN_PAGE_DIV_WITH_TABLE))
         .next()
-        .ok_or(parse_err("Didn't find table with seatings on the main page"))?;
-    let content = table.select(&selector(MAIN_PAGE_TABLE_CONTENT))
+        .ok_or_else(|| parse_err("Didn't find table with seatings on the main page"))?;
+    let content = table
+        .select(&selector(MAIN_PAGE_TABLE_CONTENT))
         .next()
-        .ok_or(parse_err("Didn't find content in table"))?;
+        .ok_or_else(|| parse_err("Didn't find content in table"))?;
     let list: Vec<_> = content
         .select(&selector("tr"))
-        .filter_map(|row| parse_main_row(row))
+        .filter_map(parse_main_row)
         .collect();
     if list.is_empty() {
         Err(parse_err("Didn't find any seatings in the list"))
@@ -52,12 +55,14 @@ pub fn parse_seatings(document: Html) -> Result<SeatingList> {
 
 pub fn parse_votings(document: Html) -> Result<Vec<Voting>> {
     // it so happens those are equivalent to main page ones
-    let tbody = document.select(&selector(MAIN_PAGE_DIV_WITH_TABLE))
+    let tbody = document
+        .select(&selector(MAIN_PAGE_DIV_WITH_TABLE))
         .next()
         .map(|div| div.select(&selector(MAIN_PAGE_TABLE_CONTENT)).next())
         .flatten()
-        .ok_or(parse_err("Didn't find table in seating"))?;
-    let table: Vec<_> = tbody.select(&selector("tr"))
+        .ok_or_else(|| parse_err("Didn't find table in seating"))?;
+    let table: Vec<_> = tbody
+        .select(&selector("tr"))
         .filter_map(parse_voting_row)
         .collect();
     if table.is_empty() {
@@ -74,29 +79,34 @@ fn parse_voting_result_row(row: ElementRef) -> Option<PartyVote> {
     let _total_party_members = cells.next();
     let _total_party_votes = cells.next();
     // those are in <strong></strong>
-    let get_votes = |e: ElementRef| e
-        .child("a")
-        .map(|e| e.child("strong")
-            .map(|e| e.inner_html().parse().unwrap_or(0)))
-        .flatten()
-        .unwrap_or(0);
+    let get_votes = |e: ElementRef| {
+        e.child("a")
+            .map(|e| {
+                e.child("strong")
+                    .map(|e| e.inner_html().parse().unwrap_or(0))
+            })
+            .flatten()
+            .unwrap_or(0)
+    };
     let votes_for = get_votes(cells.next()?);
     let votes_against = get_votes(cells.next()?);
     let votes_held = get_votes(cells.next()?);
-    Some(PartyVote::new(Party::new(party), Vote::from_votes(votes_for, votes_against, votes_held)))
+    Some(PartyVote::new(
+        Party::new(party),
+        Vote::from_votes(votes_for, votes_against, votes_held),
+    ))
 }
 
 pub fn parse_voting_result(document: Html) -> Result<VotingResult> {
-    let tbody = document.select(&selector("#main"))
+    let tbody = document
+        .select(&selector("#main"))
         .next()
-        .map(|div| div.select(&selector("#contentBody")).next())
-        .flatten()
-        .map(|div| div.select(&selector("table.kluby")).next())
-        .flatten()
-        .map(|table| table.select(&selector("tbody")).next())
-        .flatten()
-        .ok_or(parse_err("Didn't find table body in voting results"))?;
-    let table: Vec<_> = tbody.select(&selector("tr"))
+        .and_then(|div| div.select(&selector("#contentBody")).next())
+        .and_then(|div| div.select(&selector("table.kluby")).next())
+        .and_then(|table| table.select(&selector("tbody")).next())
+        .ok_or_else(|| parse_err("Didn't find table body in voting results"))?;
+    let table: Vec<_> = tbody
+        .select(&selector("tr"))
         .filter_map(parse_voting_result_row)
         .collect();
     if table.is_empty() {

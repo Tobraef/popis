@@ -5,16 +5,16 @@ pub struct SeatingList {
 }
 
 impl SeatingList {
-    pub fn new(seatings: Vec<Seating>) -> Self { Self { seatings } }
+    pub fn new(seatings: Vec<Seating>) -> Self {
+        Self { seatings }
+    }
 }
 
 pub struct Url(pub String);
 
 impl Url {
     pub fn try_new(s: String) -> Option<Url> {
-        reqwest::Url::parse(&s)
-            .ok()
-            .map(|_| Url(s))
+        reqwest::Url::parse(&s).ok().map(|_| Url(s))
     }
 }
 
@@ -26,7 +26,14 @@ pub struct Seating {
 }
 
 impl Seating {
-    pub fn new(link: Url, date: Date<Utc>, number: u32) -> Self { Self { link, date, number, votings: None } }
+    pub fn new(link: Url, date: Date<Utc>, number: u32) -> Self {
+        Self {
+            link,
+            date,
+            number,
+            votings: None,
+        }
+    }
 }
 
 pub struct Voting {
@@ -37,7 +44,14 @@ pub struct Voting {
 }
 
 impl Voting {
-    pub fn new(link: Url, number: u32, description: String) -> Self { Self { link, number, description, voting_results: None } }
+    pub fn new(link: Url, number: u32, description: String) -> Self {
+        Self {
+            link,
+            number,
+            description,
+            voting_results: None,
+        }
+    }
 }
 
 pub struct VotingResult {
@@ -45,16 +59,20 @@ pub struct VotingResult {
 }
 
 impl VotingResult {
-    pub fn new(parties_votes: Vec<PartyVote>) -> Self { Self { parties_votes } }
+    pub fn new(parties_votes: Vec<PartyVote>) -> Self {
+        Self { parties_votes }
+    }
 }
 
 pub struct PartyVote {
     pub party: Party,
-    pub vote: Vote, 
+    pub vote: Vote,
 }
 
 impl PartyVote {
-    pub fn new(party: Party, vote: Vote) -> Self { Self { party, vote } }
+    pub fn new(party: Party, vote: Vote) -> Self {
+        Self { party, vote }
+    }
 }
 
 pub struct Party {
@@ -63,7 +81,9 @@ pub struct Party {
 }
 
 impl Party {
-    pub fn new(name: String) -> Self { Self { name } }
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
 }
 
 #[derive(Debug)]

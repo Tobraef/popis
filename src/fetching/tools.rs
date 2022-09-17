@@ -1,11 +1,14 @@
 use std::fmt::Display;
 
-use chrono::{Date, Utc, Month, TimeZone};
-use log::debug;
+use chrono::{Date, Month, TimeZone, Utc};
+use log::{debug, error};
 use reqwest::IntoUrl;
-use scraper::{Selector, Html, ElementRef};
+use scraper::{ElementRef, Html, Selector};
 
-use crate::{popis_error::{PopisError, Result}, domain::Url};
+use crate::{
+    domain::Url,
+    popis_error::{PopisError, Result},
+};
 
 pub trait Selectible {
     fn child(&self, selector: &str) -> Option<ElementRef>;
@@ -27,7 +30,13 @@ pub fn seatings_url(cadence: u32) -> String {
 
 pub fn verify_document(doc: &Html) -> Result<()> {
     if !doc.errors.is_empty() {
-        debug!("Error parsing doc: {}", doc.errors.iter().fold(String::default(), |mut a,b| { a.push_str(b); a }));
+        debug!(
+            "Error parsing doc: {}",
+            doc.errors.iter().fold(String::default(), |mut a, b| {
+                a.push_str(b);
+                a
+            })
+        );
     }
     Ok(())
 }
@@ -41,15 +50,13 @@ lazy_static::lazy_static! {
 }
 
 pub async fn fetch_document<U: IntoUrl + Display + Clone>(url: U) -> Result<Html> {
-    let html = CLIENT.get(url.clone())
-        .send()
-        .await?
-        .text()
-        .await?;
+    let html = CLIENT.get(url.clone()).send().await?.text().await?;
     let html = html.replace('_', "x");
     let document = Html::parse_document(&html);
     match verify_document(&document) {
-        Err(PopisError::HtmlParsing(str)) => Err(PopisError::HtmlParsing(format!("Error parsing {url}: {str}"))),
+        Err(PopisError::HtmlParsing(str)) => Err(PopisError::HtmlParsing(format!(
+            "Error parsing {url}: {str}"
+        ))),
         _ => Ok(document),
     }
 }
@@ -70,7 +77,10 @@ pub fn map_date(polish_date: &str) -> Option<Date<Utc>> {
         "października" => Month::October,
         "listopada" => Month::November,
         "grudnia" => Month::December,
-        _ => panic!(),
+        m => {
+            error!("Received month: {m}, couldn't parse it into any polish month");
+            return None;
+        }
     };
     let year = dmy.next()?.parse().ok()?;
     Some(Utc.ymd(year, month.number_from_month(), day))

@@ -1,26 +1,26 @@
-mod tools;
 mod document_parsing;
+mod tools;
 
 use tools::*;
 
-use crate::{domain::{Url, Voting, SeatingList, VotingResult}, popis_error::Result};
+use crate::{
+    domain::{SeatingList, Url, Voting, VotingResult},
+    popis_error::Result,
+};
 
 pub async fn fetch_votings(link: Url) -> Result<Vec<Voting>> {
-    let document = fetch_document(&link.0)
-        .await?;
-    document_parsing::parse_votings(document)    
+    let document = fetch_document(&link.0).await?;
+    document_parsing::parse_votings(document)
 }
 
 pub async fn fetch_seatings(cadence: u32) -> Result<SeatingList> {
     let url = seatings_url(cadence);
-    let document = fetch_document(url)
-        .await?;
+    let document = fetch_document(url).await?;
     document_parsing::parse_seatings(document)
 }
 
 pub async fn fetch_voting_results(link: Url) -> Result<VotingResult> {
-    let document = fetch_document(link.0)
-        .await?;
+    let document = fetch_document(link.0).await?;
     document_parsing::parse_voting_result(document)
 }
 
@@ -48,7 +48,17 @@ mod tests {
                 }
             }
         }
-        assert!(total_seatings * 9 / 10 < valid_seatings, "Total seatings: {}, valid ones: {}", total_seatings, valid_seatings);
-        assert!(total_votings * 9 / 10 < valid_votings, "Total votings: {}, valid ones: {}", total_votings, valid_votings);
+        assert!(
+            total_seatings * 9 / 10 < valid_seatings,
+            "Total seatings: {}, valid ones: {}",
+            total_seatings,
+            valid_seatings
+        );
+        assert!(
+            total_votings * 9 / 10 < valid_votings,
+            "Total votings: {}, valid ones: {}",
+            total_votings,
+            valid_votings
+        );
     }
 }
