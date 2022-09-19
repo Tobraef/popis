@@ -8,4 +8,6 @@ pub enum PopisError {
     WebRequest(#[from] reqwest::Error),
     #[error("HTML parsing error, the document structure on the website might have changed: {0}")]
     HtmlParsing(String),
+    #[error("Couldn't connect to the database: {0}")]
+    DbConnectionError(String),
 }

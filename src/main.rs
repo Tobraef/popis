@@ -3,6 +3,7 @@ use crate::domain::Vote;
 mod domain;
 mod fetching;
 mod popis_error;
+mod db;
 
 fn logger() {
     env_logger::builder()
