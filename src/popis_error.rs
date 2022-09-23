@@ -10,4 +10,8 @@ pub enum PopisError {
     HtmlParsing(String),
     #[error("Couldn't connect to the database: {0}")]
     DbConnectionError(String),
+    #[error("Run into error while communicating with the database: {0}")]
+    DbCommunicationError(String),
+    #[error("Logic error: {0}")]
+    LogicError(String),
 }

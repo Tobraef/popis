@@ -18,3 +18,4 @@ log = "0.4"
 lazy_static = "1.4"
 tokio-postgres = "0.7"
 rand = "0.8"
+postgres = { version = "0.19", features = ["with-chrono-0_4"] }

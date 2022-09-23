@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use chrono::{Date, Month, TimeZone, Utc};
+use chrono::{Month, TimeZone, Utc, DateTime, NaiveDate};
 use log::{debug, error};
 use reqwest::IntoUrl;
 use scraper::{ElementRef, Html, Selector};
@@ -61,7 +61,7 @@ pub async fn fetch_document<U: IntoUrl + Display + Clone>(url: U) -> Result<Html
     }
 }
 
-pub fn map_date(polish_date: &str) -> Option<Date<Utc>> {
+pub fn map_date(polish_date: &str) -> Option<DateTime<Utc>> {
     let mut dmy = polish_date.trim().split(' ');
     let day = dmy.next()?.parse().ok()?;
     let month = match dmy.next()? {
@@ -83,7 +83,7 @@ pub fn map_date(polish_date: &str) -> Option<Date<Utc>> {
         }
     };
     let year = dmy.next()?.parse().ok()?;
-    Some(Utc.ymd(year, month.number_from_month(), day))
+    Some(DateTime::<Utc>::from_utc(NaiveDate::from_ymd(year, month.number_from_month(), day).and_hms(0, 0, 0), Utc))
 }
 
 pub fn url_from_link<S: std::fmt::Display>(href_link: S) -> Option<Url> {

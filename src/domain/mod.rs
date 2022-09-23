@@ -1,5 +1,6 @@
-use chrono::{Date, Utc};
+use chrono::{Utc, DateTime};
 
+#[derive(Debug)]
 pub struct SeatingList {
     pub seatings: Vec<Seating>,
 }
@@ -10,6 +11,7 @@ impl SeatingList {
     }
 }
 
+#[derive(Debug)]
 pub struct Url(pub String);
 
 impl Url {
@@ -18,15 +20,16 @@ impl Url {
     }
 }
 
+#[derive(Debug)]
 pub struct Seating {
     pub link: Url,
-    pub date: Date<Utc>,
+    pub date: DateTime<Utc>,
     pub number: u32,
     pub votings: Option<Vec<Voting>>,
 }
 
 impl Seating {
-    pub fn new(link: Url, date: Date<Utc>, number: u32) -> Self {
+    pub fn new(link: Url, date: DateTime<Utc>, number: u32) -> Self {
         Self {
             link,
             date,
@@ -36,6 +39,7 @@ impl Seating {
     }
 }
 
+#[derive(Debug)]
 pub struct Voting {
     pub link: Url,
     pub number: u32,
@@ -54,6 +58,7 @@ impl Voting {
     }
 }
 
+#[derive(Debug)]
 pub struct VotingResult {
     pub parties_votes: Vec<PartyVote>,
 }
@@ -64,6 +69,7 @@ impl VotingResult {
     }
 }
 
+#[derive(Debug)]
 pub struct PartyVote {
     pub party: Party,
     pub vote: Vote,
@@ -75,6 +81,7 @@ impl PartyVote {
     }
 }
 
+#[derive(Debug)]
 pub struct Party {
     pub name: String,
     //maybe members some day

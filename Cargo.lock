@@ -977,12 +977,27 @@ dependencies = [
  "env_logger",
  "lazy_static",
  "log",
+ "postgres",
  "rand 0.8.5",
  "reqwest",
  "scraper",
  "serde",
  "serde_json",
  "thiserror",
+ "tokio",
+ "tokio-postgres",
+]
+
+[[package]]
+name = "postgres"
+version = "0.19.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "960c214283ef8f0027974c03e9014517ced5db12f021a9abb66185a5751fab0a"
+dependencies = [
+ "bytes",
+ "fallible-iterator",
+ "futures-util",
+ "log",
  "tokio",
  "tokio-postgres",
 ]
@@ -1012,6 +1027,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73d946ec7d256b04dfadc4e6a3292324e6f417124750fc5c0950f981b703a0f1"
 dependencies = [
  "bytes",
+ "chrono",
  "fallible-iterator",
  "postgres-protocol",
 ]
