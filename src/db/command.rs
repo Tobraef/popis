@@ -70,6 +70,7 @@ fn verify_if_contains_data(seating: &Seating) -> Result<()> {
 
 pub async fn insert_seating(provider: &Provider, seating: &Seating) -> Result<()> {
     verify_if_contains_data(seating);
+    //add parties somewhere here
     let seating_id = insert_query(provider, r#"
     INSERT INTO seating (date, number) VALUES ($1, $2) RETURNING id;
     "#, &[&seating.date, &seating.number]).await?;
@@ -87,8 +88,14 @@ async fn insert_voting(provider: &Provider, seating_id: i64, voting: &Voting) ->
 }
 
 async fn insert_voting_result(provider: &Provider, voting_id: i64, result: &VotingResult) -> Result<()> {
-    //check if party is in 
-    insert_query(provider, r#"
-    INSERT INTO vote
-    "#, params)
+    for party_vote in result.parties_votes {
+        insert_query(provider, r#"
+            INSERT INTO vote (voting_id, party_id, result) VALUES ($1, $2, $3);
+        "#, &[todo!(), todo!(), ])
+
+    } 
 }
+id SERIAL PRIMARY KEY,
+        voting_id INT NOT NULL,
+        party_id INT NOT NULL,
+        result INT NOT NULL,

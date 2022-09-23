@@ -112,6 +112,17 @@ impl Vote {
     }
 }
 
+impl From<i64> for Vote {
+    fn from(i: i64) -> Self {
+        match i {
+            0 => Self::For,
+            1 => Self::Against,
+            2 => Self::Hold,
+            _ => panic!(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
