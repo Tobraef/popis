@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use log::info;
 use postgres::types::ToSql;
 
 use super::provider::Provider;
@@ -18,10 +19,13 @@ async fn insert_query(
         .await
         .map_err(|e| {
             PopisError::DbCommunicationError(format!(
-                "Couldn't insert seating with {params:?} into db: {e}"
+                "Couldn't insert data with params:{params:?} and query: {query} into db: {e}"
             ))
         })
-        .map(|rows| rows.into_iter().map(|r| r.get::<usize, i32>(0)))
+        .map(|rows| {
+            info!("Inserted succesfully params:{params:?} with query: {query}");
+            rows.into_iter().map(|r| r.get::<usize, i32>(0))
+        })
 }
 pub async fn insert_seating(provider: &Provider, seating: &Seating) -> Result<()> {
     let parties = insert_and_fetch_parties(provider, seating).await?;
@@ -49,6 +53,7 @@ async fn insert_and_fetch_parties(
     let mut parties_in_db: HashMap<_, _> = super::query::raw_parties_except(provider, &parties)
         .await?
         .collect();
+    info!("Parties in seating {parties:?}, parties in db {parties_in_db:?}");
     if parties_in_db.len() == parties.len() {
         Ok(parties_in_db)
     } else {
@@ -122,8 +127,9 @@ async fn insert_voting_result(
     let voting_nums: Vec<_> = result.parties_votes.iter().map(|x| x.vote.num()).collect();
     for (vote, num) in result.parties_votes.iter().zip(voting_nums.iter()) {
         params.push(&voting_id);
-        params.push(parties.get(&vote.party.name).unwrap());
-        params.push(num);
+        params.push(parties.get(&vote.party.name) 
+            .expect(&format!("All parties should be in db. Asked for {} but had {:?}", vote.party.name, parties)));
+        params.push(num);compile_error!("add missing one to db then")
     }
     insert_query(provider, &query, &params).await.map(|_| ())
 }

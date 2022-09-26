@@ -49,7 +49,6 @@ async fn init_tables(db: &Client) -> Result<()> {
             identifier INT NOT NULL,
             seating_id INT NOT NULL,
             description VARCHAR NOT NULL,
-            UNIQUE(identifier),
             CONSTRAINT fk_seating
             FOREIGN KEY(seating_id) 
             REFERENCES seating(id)
