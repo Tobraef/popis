@@ -29,10 +29,10 @@ pub(super) async fn raw_parties_except(
         .query(
             &format!(
                 " 
-        SELECT name, id
-        FROM party
-        WHERE name IN ({})",
-                to_exclude.join(",")
+        SELECT name, id 
+        FROM party 
+        WHERE name IN ('{}');",
+                to_exclude.join("','")
             ),
             &[],
         )
@@ -40,7 +40,6 @@ pub(super) async fn raw_parties_except(
         .map_err(|e| PopisError::DbConnectionError(e.to_string()))?
         .into_iter()
         .map(|r| (r.get(0), r.get(1))))
-        compile_error!("something wrong with the IN query")
 }
 
 async fn max_seating_identifier(db: &Client) -> Result<i32> {
@@ -71,8 +70,8 @@ pub async fn random_voting(provider: &Provider) -> Result<Voting> {
             "SELECT v.description, p.name, r.result 
                         FROM voting v 
                         INNER JOIN vote r ON v.id = r.voting_id 
-                        INNER JOIN party p ON p.id = r.party_id
-                        WHERE v.identifier = $1", &[&random_voting_identifier])
+                        INNER JOIN party p ON p.id = r.party_id 
+                        WHERE v.identifier = $1;", &[&random_voting_identifier])
         .await
         .map_err(|e| PopisError::DbCommunicationError(format!("Error selecting random voting: {}", e)))
         .map(|rows| VotingResult::new(rows
