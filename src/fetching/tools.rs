@@ -1,14 +1,13 @@
 use std::fmt::Display;
 
-use chrono::{Month, TimeZone, Utc, DateTime, NaiveDate};
+use chrono::{DateTime, Month, NaiveDate, Utc};
 use log::{debug, error};
 use reqwest::IntoUrl;
 use scraper::{ElementRef, Html, Selector};
 
-use crate::{
-    domain::Url,
-    popis_error::{PopisError, Result},
-};
+use crate::popis_error::{PopisError, Result};
+
+use super::data::Url;
 
 pub trait Selectible {
     fn child(&self, selector: &str) -> Option<ElementRef>;
@@ -24,8 +23,11 @@ pub fn selector(s: &str) -> Selector {
     Selector::parse(s).unwrap()
 }
 
-pub fn seatings_url(cadence: u32) -> String {
-    format!(r"https://www.sejm.gov.pl/sejm9.nsf/agent.xsp?symbol=posglos&NrKadencji={cadence}")
+pub fn seatings_url(cadence: u32) -> Url {
+    Url::try_new(format!(
+        r"https://www.sejm.gov.pl/sejm9.nsf/agent.xsp?symbol=posglos&NrKadencji={cadence}"
+    ))
+    .unwrap()
 }
 
 pub fn verify_document(doc: &Html) -> Result<()> {
@@ -83,7 +85,10 @@ pub fn map_date(polish_date: &str) -> Option<DateTime<Utc>> {
         }
     };
     let year = dmy.next()?.parse().ok()?;
-    Some(DateTime::<Utc>::from_utc(NaiveDate::from_ymd(year, month.number_from_month(), day).and_hms(0, 0, 0), Utc))
+    Some(DateTime::<Utc>::from_utc(
+        NaiveDate::from_ymd(year, month.number_from_month(), day).and_hms(0, 0, 0),
+        Utc,
+    ))
 }
 
 pub fn url_from_link<S: std::fmt::Display>(href_link: S) -> Option<Url> {

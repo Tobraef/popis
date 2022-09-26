@@ -14,4 +14,6 @@ pub enum PopisError {
     DbCommunicationError(String),
     #[error("Logic error: {0}")]
     LogicError(String),
+    #[error("Starting server: {0}")]
+    ServerStart(String),
 }

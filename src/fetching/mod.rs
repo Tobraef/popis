@@ -1,27 +1,39 @@
+mod data;
 mod document_parsing;
 mod tools;
 
+use futures::{stream::FuturesUnordered, StreamExt};
 use tools::*;
 
 use crate::{
-    domain::{SeatingList, Url, Voting, VotingResult},
+    domain::{Seating, Voting},
     popis_error::Result,
 };
 
-pub async fn fetch_votings(link: Url) -> Result<Vec<Voting>> {
-    let document = fetch_document(&link.0).await?;
-    document_parsing::parse_votings(document)
-}
+use self::data::LoadableSeatingHeader;
 
-pub async fn fetch_seatings(cadence: u32) -> Result<SeatingList> {
+pub async fn fetch_seating_headers(cadence: u32) -> Result<Vec<LoadableSeatingHeader>> {
     let url = seatings_url(cadence);
-    let document = fetch_document(url).await?;
-    document_parsing::parse_seatings(document)
+    let document = fetch_document(url.as_ref()).await?;
+    document_parsing::parse_seating_list(&document)
 }
 
-pub async fn fetch_voting_results(link: Url) -> Result<VotingResult> {
-    let document = fetch_document(link.0).await?;
-    document_parsing::parse_voting_result(document)
+pub async fn load_seating(loadable_seating_header: LoadableSeatingHeader) -> Result<Seating> {
+    let votings_document = fetch_document(loadable_seating_header.votings_url.as_ref()).await?;
+    let loadable_votings = document_parsing::parse_votings(&votings_document)?;
+    let mut votings = Vec::with_capacity(loadable_votings.len());
+    let mut tasks =
+        FuturesUnordered::from_iter(loadable_votings.into_iter().map(|loadable| async move {
+            fetch_document(loadable.voting_result_url.as_ref())
+                .await
+                .and_then(|result_document| document_parsing::parse_voting_result(&result_document))
+                .map(|voting_result| Voting::new(loadable.voting, voting_result))
+                .ok()
+        }));
+    while let Some(Some(voting)) = tasks.next().await {
+        votings.push(voting);
+    }
+    Ok(Seating::new(loadable_seating_header.header, votings))
 }
 
 #[cfg(test)]
@@ -30,35 +42,16 @@ mod tests {
 
     #[tokio::test]
     async fn fetching_all() {
-        let seatings = fetch_seatings(9).await.unwrap();
-        let mut valid_seatings = 0;
-        let mut total_seatings = 0;
-        let mut valid_votings = 0;
-        let mut total_votings = 0;
-        for seating in seatings.seatings.into_iter().take(10) {
-            total_seatings += 1;
-            let link = seating.link;
-            if let Ok(votings) = fetch_votings(link).await {
-                valid_seatings += 1;
-                for voting in votings.into_iter().take(20) {
-                    if let Ok(_) = fetch_voting_results(voting.link).await {
-                        valid_votings += 1;
-                    }
-                    total_votings += 1;
+        let seatings = fetch_seating_headers(9).await.unwrap();
+        let mut ok = 0;
+        for seating in seatings.into_iter().take(5) {
+            if let Ok(_seating) = load_seating(seating).await {
+                ok += 1;
+                if ok == 3 {
+                    break;
                 }
             }
         }
-        assert!(
-            total_seatings * 9 / 10 < valid_seatings,
-            "Total seatings: {}, valid ones: {}",
-            total_seatings,
-            valid_seatings
-        );
-        assert!(
-            total_votings * 9 / 10 < valid_votings,
-            "Total votings: {}, valid ones: {}",
-            total_votings,
-            valid_votings
-        );
+        assert_eq!(ok, 3);
     }
 }

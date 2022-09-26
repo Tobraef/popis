@@ -1,39 +1,18 @@
 use scraper::{ElementRef, Html};
 
-use super::tools::*;
+use super::{
+    data::{LoadableSeatingHeader, LoadableVoting},
+    tools::*,
+};
 use crate::{
-    domain::{Party, PartyVote, Seating, SeatingList, Vote, Voting, VotingResult},
+    domain::{Party, PartyVote, SeatingHeader, Vote, VotingHeader, VotingResult},
     popis_error::Result,
 };
 
 const MAIN_PAGE_DIV_WITH_TABLE: &str = "div#contentBody";
 const MAIN_PAGE_TABLE_CONTENT: &str = "tbody";
 
-fn parse_main_row(row: ElementRef) -> Option<Seating> {
-    let td_selector = selector("td");
-    let mut children = row.select(&td_selector);
-    let number = children.next()?.inner_html().parse().ok()?;
-    let link_with_date = children.next()?.select(&selector("a")).next()?;
-    let link = url_from_link(link_with_date.value().attr("href")?)?;
-    let date = map_date(&link_with_date.inner_html())?;
-    Some(Seating::new(link, date, number))
-}
-
-fn parse_voting_row(row: ElementRef) -> Option<Voting> {
-    let td_selector = selector("td");
-    let mut cells = row.select(&td_selector);
-    let number_with_link = cells.next()?.select(&selector("a")).next()?;
-    let link = url_from_link(number_with_link.value().attr("href")?)?;
-    let number = number_with_link.inner_html().parse().ok()?;
-    let _hour = cells.next();
-    let description_node = cells.next()?;
-    let mut description = description_node.text().next()?.to_owned();
-    let second_part = description_node.select(&selector("a")).next()?.inner_html();
-    description.push_str(&second_part);
-    Some(Voting::new(link, number, description))
-}
-
-pub fn parse_seatings(document: Html) -> Result<SeatingList> {
+pub fn parse_seating_list(document: &Html) -> Result<Vec<LoadableSeatingHeader>> {
     let table = document
         .select(&selector(MAIN_PAGE_DIV_WITH_TABLE))
         .next()
@@ -49,17 +28,27 @@ pub fn parse_seatings(document: Html) -> Result<SeatingList> {
     if list.is_empty() {
         Err(parse_err("Didn't find any seatings in the list"))
     } else {
-        Ok(SeatingList::new(list))
+        Ok(list)
     }
 }
 
-pub fn parse_votings(document: Html) -> Result<Vec<Voting>> {
+fn parse_main_row(row: ElementRef) -> Option<LoadableSeatingHeader> {
+    let td_selector = selector("td");
+    let mut children = row.select(&td_selector);
+    let number = children.next()?.inner_html().parse().ok()?;
+    let link_with_date = children.next()?.select(&selector("a")).next()?;
+    let link = url_from_link(link_with_date.value().attr("href")?)?;
+    let date = map_date(&link_with_date.inner_html())?;
+    let header = SeatingHeader::new(number, date);
+    Some(LoadableSeatingHeader::new(header, link))
+}
+
+pub(super) fn parse_votings(document: &Html) -> Result<Vec<LoadableVoting>> {
     // it so happens those are equivalent to main page ones
     let tbody = document
         .select(&selector(MAIN_PAGE_DIV_WITH_TABLE))
         .next()
-        .map(|div| div.select(&selector(MAIN_PAGE_TABLE_CONTENT)).next())
-        .flatten()
+        .and_then(|div| div.select(&selector(MAIN_PAGE_TABLE_CONTENT)).next())
         .ok_or_else(|| parse_err("Didn't find table in seating"))?;
     let table: Vec<_> = tbody
         .select(&selector("tr"))
@@ -72,6 +61,23 @@ pub fn parse_votings(document: Html) -> Result<Vec<Voting>> {
     }
 }
 
+fn parse_voting_row(row: ElementRef) -> Option<LoadableVoting> {
+    let td_selector = selector("td");
+    let mut cells = row.select(&td_selector);
+    let number_with_link = cells.next()?.select(&selector("a")).next()?;
+    let link = url_from_link(number_with_link.value().attr("href")?)?;
+    let number = number_with_link.inner_html().parse().ok()?;
+    let _hour = cells.next();
+    let description_node = cells.next()?;
+    let mut description = description_node.text().next()?.to_owned();
+    let second_part = description_node.select(&selector("a")).next()?.inner_html();
+    description.push_str(&second_part);
+    Some(LoadableVoting::new(
+        VotingHeader::new(number, description),
+        link,
+    ))
+}
+
 fn parse_voting_result_row(row: ElementRef) -> Option<PartyVote> {
     let td_selector = selector("td");
     let mut cells = row.select(&td_selector);
@@ -81,11 +87,10 @@ fn parse_voting_result_row(row: ElementRef) -> Option<PartyVote> {
     // those are in <strong></strong>
     let get_votes = |e: ElementRef| {
         e.child("a")
-            .map(|e| {
+            .and_then(|e| {
                 e.child("strong")
                     .map(|e| e.inner_html().parse().unwrap_or(0))
             })
-            .flatten()
             .unwrap_or(0)
     };
     let votes_for = get_votes(cells.next()?);
@@ -97,7 +102,7 @@ fn parse_voting_result_row(row: ElementRef) -> Option<PartyVote> {
     ))
 }
 
-pub fn parse_voting_result(document: Html) -> Result<VotingResult> {
+pub fn parse_voting_result(document: &Html) -> Result<VotingResult> {
     let tbody = document
         .select(&selector("#main"))
         .next()

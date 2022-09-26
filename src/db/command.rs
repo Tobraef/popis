@@ -1,101 +1,129 @@
-use std::fmt::Debug;
+use std::collections::HashMap;
 
-use postgres::{types::ToSql, Error};
+use postgres::types::ToSql;
 
 use super::provider::Provider;
-use crate::{popis_error::{Result, PopisError}, domain::{Seating, Voting, VotingResult}};
+use crate::{
+    domain::{parties_in_seating, Seating, Voting, VotingResult},
+    popis_error::{PopisError, Result},
+};
 
-pub async fn init_tables(provider: &Provider) -> Result<()> {
+async fn insert_query(
+    provider: &Provider,
+    query: &str,
+    params: &[&(dyn ToSql + Sync)],
+) -> Result<impl Iterator<Item = i32>> {
     let db = &provider.client;
-    db.execute(r#"
-    CREATE TABLE IF NOT EXISTS seating (
-        id SERIAL PRIMARY KEY,
-        date TIMESTAMP WITH TIMEZONE NOT NULL,
-        number UNIQUE NOT NULL,
-    );
-    CREATE TABLE IF NOT EXISTS voting (
-        id SERIAL PRIMARY KEY,
-        number UNIQUE NOT NULL,
-        seating_id INT NOT NULL,
-        description VARCHAR NOT NULL,
-        CONSTRAINT fk_seating
-        FOREIGN KEY(seating_id) 
-        REFERENCES seating(id)
-        ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS party (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS vote (
-        id SERIAL PRIMARY KEY,
-        voting_id INT NOT NULL,
-        party_id INT NOT NULL,
-        result INT NOT NULL,
-        CONSTRAINT fk_voting_result
-        FOREIGN KEY(voting_id) 
-        REFERENCES voting(id)
-        ON DELETE CASCADE,
-        CONSTRAINT fk_party
-        FOREIGN KEY(party_id) 
-        REFERENCES party(id)
-        ON DELETE CASCADE
-    );"#, &[])
+    db.query(query, params)
         .await
-        .map_err(|e| PopisError::DbCommunicationError(format!("Couldn't init tables: {e}")))
-        .map(|_| ())
+        .map_err(|e| {
+            PopisError::DbCommunicationError(format!(
+                "Couldn't insert seating with {params:?} into db: {e}"
+            ))
+        })
+        .map(|rows| rows.into_iter().map(|r| r.get::<usize, i32>(0)))
 }
-
-async fn insert_query(provider: &Provider, query: &str, params: &[&(dyn ToSql + Sync)]) -> Result<i64> 
-{
-    let db = &provider.client;
-    db.query_one(query, params)
-        .await
-        .map_err(|e| PopisError::DbCommunicationError(format!("Couldn't insert seating with {params:?} into db: {e}")))
-        .map(|r| r.get(0))    
-}
-
-fn verify_if_contains_data(seating: &Seating) -> Result<()> {
-    if let Some(votings) = seating.votings {
-        for vote in votings {
-            if let None = vote.voting_results {
-                return Err(PopisError::LogicError(String::from("No result found under voting.")));
-            }
-        }
-        Ok(())
-    } else {
-        Err(PopisError::LogicError(String::from("No votings found for seating.")))
-    }
-}
-
 pub async fn insert_seating(provider: &Provider, seating: &Seating) -> Result<()> {
-    verify_if_contains_data(seating);
-    //add parties somewhere here
-    let seating_id = insert_query(provider, r#"
-    INSERT INTO seating (date, number) VALUES ($1, $2) RETURNING id;
-    "#, &[&seating.date, &seating.number]).await?;
-    for voting in seating.votings.as_ref().unwrap().iter() {
-        insert_voting(provider, seating_id, voting).await?;
+    let parties = insert_and_fetch_parties(provider, seating).await?;
+    let seating_id = insert_query(
+        provider,
+        r#"
+    INSERT INTO seating (date, identifier) VALUES ($1, $2) RETURNING id;
+    "#,
+        &[&seating.header.date, &seating.header.identifier],
+    )
+    .await?
+    .next()
+    .unwrap();
+    for voting in seating.votings.iter() {
+        insert_voting(provider, seating_id, voting, &parties).await?;
     }
     Ok(())
 }
 
-async fn insert_voting(provider: &Provider, seating_id: i64, voting: &Voting) -> Result<()> {
-    let voting_id = insert_query(provider, r#"
-    INSERT INTO voting (number, seating_id, description) VALUES ($1, $2, $3) RETURNING id;
-    "#, &[&voting.number, &seating_id, &voting.description]).await?;
-    insert_voting_result(provider, voting_id, voting.voting_results.as_ref().unwrap()).await
+async fn insert_and_fetch_parties(
+    provider: &Provider,
+    seating: &Seating,
+) -> Result<HashMap<String, i32>> {
+    let mut parties = parties_in_seating(seating)?;
+    let mut parties_in_db: HashMap<_, _> = super::query::raw_parties_except(provider, &parties)
+        .await?
+        .collect();
+    if parties_in_db.len() == parties.len() {
+        Ok(parties_in_db)
+    } else {
+        parties.retain(|&p| !parties_in_db.contains_key(p));
+        let mut values_list = (1..=parties.len())
+            .map(|i| format!("(${})", i))
+            .collect::<Vec<_>>()
+            .join(",");
+        values_list.push(';');
+        let ids = insert_query(
+            provider,
+            &format!(
+                "
+            INSERT INTO party (name) VALUES {}
+        ",
+                values_list
+            ),
+            &parties
+                .iter()
+                .map(|x| x as &(dyn ToSql + Sync))
+                .collect::<Vec<_>>(),
+        )
+        .await?;
+        for (id, name) in ids.zip(parties.into_iter()) {
+            parties_in_db.insert(name.to_owned(), id);
+        }
+        Ok(parties_in_db)
+    }
 }
 
-async fn insert_voting_result(provider: &Provider, voting_id: i64, result: &VotingResult) -> Result<()> {
-    for party_vote in result.parties_votes {
-        insert_query(provider, r#"
-            INSERT INTO vote (voting_id, party_id, result) VALUES ($1, $2, $3);
-        "#, &[todo!(), todo!(), ])
-
-    } 
+async fn insert_voting(
+    provider: &Provider,
+    seating_id: i32,
+    voting: &Voting,
+    parties: &HashMap<String, i32>,
+) -> Result<()> {
+    let voting_id = insert_query(
+        provider,
+        r#"
+    INSERT INTO voting (identifier, seating_id, description) VALUES ($1, $2, $3) RETURNING id;
+    "#,
+        &[
+            &voting.header.identifier,
+            &seating_id,
+            &voting.header.description,
+        ],
+    )
+    .await?
+    .next()
+    .unwrap();
+    insert_voting_result(provider, voting_id, parties, &voting.voting_result).await
 }
-id SERIAL PRIMARY KEY,
-        voting_id INT NOT NULL,
-        party_id INT NOT NULL,
-        result INT NOT NULL,
+
+async fn insert_voting_result(
+    provider: &Provider,
+    voting_id: i32,
+    parties: &HashMap<String, i32>,
+    result: &VotingResult,
+) -> Result<()> {
+    let values = (0..result.parties_votes.len())
+        .map(|mut i| {
+            i *= 3;
+            format!("(${},${},${})", i + 1, i + 2, i + 3)
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut query = r#"INSERT INTO vote (voting_id, party_id, result) VALUES "#.to_string();
+    query.push_str(&values);
+    query.push(';');
+    let mut params: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(result.parties_votes.len() * 3);
+    let voting_nums: Vec<_> = result.parties_votes.iter().map(|x| x.vote.num()).collect();
+    for (vote, num) in result.parties_votes.iter().zip(voting_nums.iter()) {
+        params.push(&voting_id);
+        params.push(parties.get(&vote.party.name).unwrap());
+        params.push(num);
+    }
+    insert_query(provider, &query, &params).await.map(|_| ())
+}

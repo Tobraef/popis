@@ -1,3 +1,5 @@
+pub mod command;
 mod provider;
-mod query;
-mod command;
+pub mod query;
+
+pub use provider::Provider;
