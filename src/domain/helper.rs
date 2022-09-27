@@ -1,19 +1,19 @@
+use std::collections::HashSet;
+
 use crate::popis_error::*;
 
 use super::Seating;
 
-pub fn parties_in_seating(seating: &Seating) -> Result<Vec<&str>> {
+pub fn parties_in_seating(seating: &Seating) -> Result<HashSet<&str>> {
     Ok(seating
         .votings
         .iter()
-        .map(|v| {
+        .flat_map(|v| {
             v.voting_result
                 .parties_votes
                 .iter()
                 .map(|p| p.party.name.as_str())
         })
-        .find(|p| p.clone().next().is_some())
-        .ok_or_else(|| PopisError::LogicError("Seating doesn't contain any parties in it.".into()))?
         .collect())
 }
 
@@ -37,7 +37,7 @@ mod tests {
                 PartyVote::new(Party::new("f".to_string()), Vote::Against),
             ])),
         ]);
-        let parties_found = parties_in_seating(&seating).unwrap();
-        assert_eq!(vec!["a".to_string(), "b".to_string(), "c".to_string()], parties_found);
+        let parties_found = Vec::from_iter(parties_in_seating(&seating).unwrap());
+        assert_eq!(vec!["a", "b", "c", "d", "e", "f"], parties_found);
     }
 }

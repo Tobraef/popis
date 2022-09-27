@@ -20,22 +20,12 @@ pub async fn contains_seating(provider: &Provider, seating: &SeatingHeader) -> R
         .is_empty())
 }
 
-pub(super) async fn raw_parties_except(
+pub(super) async fn parties(
     provider: &Provider,
-    to_exclude: &[&str],
 ) -> Result<impl Iterator<Item = (String, i32)>> {
     let db = &provider.client;
     Ok(db
-        .query(
-            &format!(
-                " 
-        SELECT name, id 
-        FROM party 
-        WHERE name IN ('{}');",
-                to_exclude.join("','")
-            ),
-            &[],
-        )
+        .query("SELECT name, id FROM party;", &[])
         .await
         .map_err(|e| PopisError::DbConnectionError(e.to_string()))?
         .into_iter()

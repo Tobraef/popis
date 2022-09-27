@@ -13,7 +13,7 @@ pub enum PopisError {
     #[error("Run into error while communicating with the database: {0}")]
     DbCommunicationError(String),
     #[error("Logic error: {0}")]
-    LogicError(String),
+    LogicError(&'static str),
     #[error("Starting server: {0}")]
     ServerStart(String),
 }

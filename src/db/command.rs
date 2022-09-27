@@ -28,7 +28,7 @@ async fn insert_query(
         })
 }
 pub async fn insert_seating(provider: &Provider, seating: &Seating) -> Result<()> {
-    let parties = insert_and_fetch_parties(provider, seating).await?;
+    let mut parties = insert_and_fetch_parties(provider, seating).await?;
     let seating_id = insert_query(
         provider,
         r#"
@@ -40,7 +40,7 @@ pub async fn insert_seating(provider: &Provider, seating: &Seating) -> Result<()
     .next()
     .unwrap();
     for voting in seating.votings.iter() {
-        insert_voting(provider, seating_id, voting, &parties).await?;
+        insert_voting(provider, seating_id, voting, &mut parties).await?;
     }
     Ok(())
 }
@@ -49,46 +49,46 @@ async fn insert_and_fetch_parties(
     provider: &Provider,
     seating: &Seating,
 ) -> Result<HashMap<String, i32>> {
-    let mut parties = parties_in_seating(seating)?;
-    let mut parties_in_db: HashMap<_, _> = super::query::raw_parties_except(provider, &parties)
+    let parties = parties_in_seating(seating)?;
+    let mut parties_in_db: HashMap<_, _> = super::query::parties(provider)
         .await?
         .collect();
     info!("Parties in seating {parties:?}, parties in db {parties_in_db:?}");
-    if parties_in_db.len() == parties.len() {
-        Ok(parties_in_db)
-    } else {
-        parties.retain(|&p| !parties_in_db.contains_key(p));
-        let mut values_list = (1..=parties.len())
-            .map(|i| format!("(${})", i))
-            .collect::<Vec<_>>()
-            .join(",");
-        values_list.push(';');
-        let ids = insert_query(
-            provider,
-            &format!(
-                "
-            INSERT INTO party (name) VALUES {}
-        ",
-                values_list
-            ),
-            &parties
-                .iter()
-                .map(|x| x as &(dyn ToSql + Sync))
-                .collect::<Vec<_>>(),
-        )
-        .await?;
-        for (id, name) in ids.zip(parties.into_iter()) {
-            parties_in_db.insert(name.to_owned(), id);
-        }
-        Ok(parties_in_db)
+    if parties_in_db.len() != parties.len() {
+        insert_missing_parties(provider, Vec::from_iter(parties), &mut parties_in_db).await?;
     }
+    Ok(parties_in_db)
+
+}
+
+async fn insert_missing_parties(provider: &Provider, mut parties: Vec<&str>, parties_in_db: &mut HashMap<String, i32>) -> Result<()> {
+    parties.retain(|&p| !parties_in_db.contains_key(p));
+    let mut values_list = (1..=parties.len())
+        .map(|i| format!("(${})", i))
+        .collect::<Vec<_>>()
+        .join(",");
+    values_list.push(';');
+    let ids = insert_query(
+        provider,
+        &format!("INSERT INTO party (name) VALUES {} RETURNING id", values_list),
+        &parties
+            .iter()
+            .map(|x| x as &(dyn ToSql + Sync))
+            .collect::<Vec<_>>(),
+    )
+    .await?;
+    parties
+        .into_iter()
+        .zip(ids)
+        .for_each(|(p,id)| { let _ = parties_in_db.insert(p.to_owned(), id); });
+    Ok(())
 }
 
 async fn insert_voting(
     provider: &Provider,
     seating_id: i32,
     voting: &Voting,
-    parties: &HashMap<String, i32>,
+    parties: &mut HashMap<String, i32>,
 ) -> Result<()> {
     let voting_id = insert_query(
         provider,
@@ -110,7 +110,7 @@ async fn insert_voting(
 async fn insert_voting_result(
     provider: &Provider,
     voting_id: i32,
-    parties: &HashMap<String, i32>,
+    parties: &mut HashMap<String, i32>,
     result: &VotingResult,
 ) -> Result<()> {
     let values = (0..result.parties_votes.len())
@@ -127,9 +127,9 @@ async fn insert_voting_result(
     let voting_nums: Vec<_> = result.parties_votes.iter().map(|x| x.vote.num()).collect();
     for (vote, num) in result.parties_votes.iter().zip(voting_nums.iter()) {
         params.push(&voting_id);
-        params.push(parties.get(&vote.party.name) 
-            .expect(&format!("All parties should be in db. Asked for {} but had {:?}", vote.party.name, parties)));
-        params.push(num);compile_error!("add missing one to db then")
+        params.push(parties.get(&vote.party.name)
+            .ok_or_else(|| PopisError::LogicError("All parties should be in cache already."))?);
+        params.push(num);
     }
     insert_query(provider, &query, &params).await.map(|_| ())
 }
