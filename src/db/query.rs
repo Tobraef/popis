@@ -61,7 +61,7 @@ pub async fn random_voting(provider: &Provider) -> Result<Voting> {
                         FROM voting v 
                         INNER JOIN vote r ON v.id = r.voting_id 
                         INNER JOIN party p ON p.id = r.party_id 
-                        WHERE v.identifier = $1;", &[&random_voting_identifier])
+                        WHERE v.identifier = $1 and v.seating_id = (SELECT id FROM seating s WHERE s.identifier = $2);", &[&random_voting_identifier, &random_seating_identifier])
         .await
         .map_err(|e| PopisError::DbCommunicationError(format!("Error selecting random voting: {}", e)))
         .map(|rows| VotingResult::new(rows

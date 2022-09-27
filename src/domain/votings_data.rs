@@ -90,7 +90,7 @@ impl Party {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub enum Vote {
     For,
     Against,

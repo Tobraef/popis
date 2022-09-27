@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use log::info;
 use postgres::types::ToSql;
@@ -49,28 +49,27 @@ async fn insert_and_fetch_parties(
     provider: &Provider,
     seating: &Seating,
 ) -> Result<HashMap<String, i32>> {
-    let parties = parties_in_seating(seating)?;
+    let mut parties = parties_in_seating(seating)?;
     let mut parties_in_db: HashMap<_, _> = super::query::parties(provider)
         .await?
         .collect();
     info!("Parties in seating {parties:?}, parties in db {parties_in_db:?}");
-    if parties_in_db.len() != parties.len() {
-        insert_missing_parties(provider, Vec::from_iter(parties), &mut parties_in_db).await?;
+    parties.retain(|&p| !parties_in_db.contains_key(p));
+    if !parties.is_empty() {
+        insert_missing_parties(provider, parties, &mut parties_in_db).await?;
     }
     Ok(parties_in_db)
 
 }
 
-async fn insert_missing_parties(provider: &Provider, mut parties: Vec<&str>, parties_in_db: &mut HashMap<String, i32>) -> Result<()> {
-    parties.retain(|&p| !parties_in_db.contains_key(p));
-    let mut values_list = (1..=parties.len())
+async fn insert_missing_parties(provider: &Provider, parties: HashSet<&str>, parties_in_db: &mut HashMap<String, i32>) -> Result<()> {
+    let values_list = (1..=parties.len())
         .map(|i| format!("(${})", i))
         .collect::<Vec<_>>()
         .join(",");
-    values_list.push(';');
     let ids = insert_query(
         provider,
-        &format!("INSERT INTO party (name) VALUES {} RETURNING id", values_list),
+        &format!("INSERT INTO party (name) VALUES {} RETURNING id;", values_list),
         &parties
             .iter()
             .map(|x| x as &(dyn ToSql + Sync))

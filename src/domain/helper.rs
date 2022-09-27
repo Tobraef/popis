@@ -38,6 +38,6 @@ mod tests {
             ])),
         ]);
         let parties_found = Vec::from_iter(parties_in_seating(&seating).unwrap());
-        assert_eq!(vec!["a", "b", "c", "d", "e", "f"], parties_found);
+        assert!(vec!["a", "b", "c", "d", "e", "f"].iter().all(|x| parties_found.contains(x)));
     }
 }
