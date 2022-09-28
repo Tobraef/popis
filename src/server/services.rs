@@ -1,37 +1,36 @@
 use actix_web::{web::{Json, Data}, get};
 use tokio::sync::Mutex;
 
-use crate::{popis_error::{PopisError, Result}, db::{self, Provider}, domain::{Voting, game::{RandomNGameState, random_n}, Vote}};
+use crate::{popis_error::{PopisError, Result}, db::Provider, domain::{random_n_game::{data::{GameResponse, PlayRequest}, orchestrator::Orchestrator}}};
 
-#[get("/random_voting")]
-pub async fn random_voting(provider: Data<&Provider>) -> Result<Json<Voting>> {
-    let voting = db::query::random_voting(provider.as_ref()).await?;
-    Ok(Json(voting))
-}
+type OrchestratorType<'a> = Data<Mutex<Orchestrator<'a>>>;
 
 #[get("/start_random_n/{n}")]
-pub async fn start_random_n(n: String, game_state: Data<Mutex<Option<RandomNGameState>>>, provider: Data<&Provider>) -> Result<Json<String>> {
-    let mut game_state = game_state.lock().await;
-    game_state.insert(random_n::begin(n.parse().unwrap()));
-    let voting = random_n::pick_voting(provider.as_ref()).await?;
-    Ok(Json(voting.description))
+pub async fn start_random_n(n: String, orchestrator: OrchestratorType<'_>) -> Result<Json<GameResponse>> {
+    let mut orchestrator = orchestrator.lock().await;
+    orchestrator.start_new(n.parse().map_err(|_e| PopisError::GameplayError(format!("Couldn't parse n: {n} into a number")))?)
+        .await
+        .map(|resp| Json(resp))
 }
 
-#[get("/play_random_n/{n}")]
-pub async fn play_random_n(n: String, game_state: Data<Mutex<Option<RandomNGameState>>>, provider: Data<&Provider>) -> Result<Json<String>> {
-    let picked: Vote = n.parse::<i32>().unwrap().into();
-    let mut game_state = game_state.lock().await;
-    game_state = random_n::chose(game_state, &vote, parties_votes)
+#[get("/play_random_n/{n}/{id}")]
+pub async fn play_random_n(n: String, id: String, orchestrator: OrchestratorType<'_>) -> Result<Json<GameResponse>> {
+    //make post and PlayRequest from json
+    let picked = n.parse().map_err(|_e| PopisError::GameplayError(format!("Couldn't parse n: {n} into a number")))?;
+    let id = id.parse().map_err(|_e| PopisError::GameplayError(format!("Couldn't parse id: {id} into a number")))?;
+    let mut orchestrator = orchestrator.lock().await;
+    orchestrator.player_chose(PlayRequest::new(picked, id))
+        .await
+        .map(|resp| Json(resp))
 }
 
 pub async fn serve(provider: &'static Provider) -> Result<()> {
     use std::net::*;
+    let games_orchestrator = Data::new(Mutex::new(Orchestrator::new(provider)));
     let provider = Data::new(provider);
-    let random_n_game_state = Data::new(Mutex::new(Option::<RandomNGameState>::None));
     actix_web::HttpServer::new(move || actix_web::App::new()
         .app_data(provider.clone())
-        .app_data(random_n_game_state.clone())
-        .service(random_voting)
+        .app_data(games_orchestrator.clone())
         .service(start_random_n)
         .service(play_random_n)
     )

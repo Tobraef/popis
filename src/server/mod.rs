@@ -13,6 +13,7 @@ impl actix_web::ResponseError for PopisError {
             PopisError::DbCommunicationError(_) => reqwest::StatusCode::SERVICE_UNAVAILABLE,
             PopisError::LogicError(_) => reqwest::StatusCode::INTERNAL_SERVER_ERROR,
             PopisError::ServerStart(_) => reqwest::StatusCode::SERVICE_UNAVAILABLE,
+            PopisError::GameplayError(_) => reqwest::StatusCode::BAD_REQUEST,
         }
     }
 }

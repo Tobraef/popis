@@ -16,4 +16,6 @@ pub enum PopisError {
     LogicError(&'static str),
     #[error("Starting server: {0}")]
     ServerStart(String),
+    #[error("Gameplay error: {0}")]
+    GameplayError(String),
 }
